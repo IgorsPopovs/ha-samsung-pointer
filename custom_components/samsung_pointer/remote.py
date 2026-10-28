@@ -28,6 +28,12 @@ async def async_setup_entry(
         {
             vol.Required("x"): vol.All(vol.Coerce(float), vol.Range(min=-2000, max=2000)),
             vol.Required("y"): vol.All(vol.Coerce(float), vol.Range(min=-2000, max=2000)),
+            vol.Optional("speed_threshold", default=8): vol.All(
+                vol.Coerce(float), vol.Range(min=0.1, max=2000)
+            ),
+            vol.Optional("max_speed_gain", default=4): vol.All(
+                vol.Coerce(float), vol.Range(min=1, max=8)
+            ),
         },
         "async_move",
     )
@@ -75,9 +81,9 @@ class SamsungPointerRemote(RemoteEntity):
     def _connection_changed(self) -> None:
         self.async_write_ha_state()
 
-    async def _run(self, action, *args) -> None:
+    async def _run(self, action, *args, **kwargs) -> None:
         try:
-            await action(*args)
+            await action(*args, **kwargs)
         except PointerAuthError as error:
             self.entry.async_start_reauth(self.hass)
             raise HomeAssistantError(str(error)) from None
@@ -92,8 +98,20 @@ class SamsungPointerRemote(RemoteEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self._run(self.client.disconnect)
 
-    async def async_move(self, x: float, y: float) -> None:
-        await self._run(self.client.move, x, y)
+    async def async_move(
+        self,
+        x: float,
+        y: float,
+        speed_threshold: float = 8,
+        max_speed_gain: float = 4,
+    ) -> None:
+        await self._run(
+            self.client.move,
+            x,
+            y,
+            speed_threshold=speed_threshold,
+            max_speed_gain=max_speed_gain,
+        )
 
     async def async_click(self, button: str = "left") -> None:
         await self._run(self.client.click, button)

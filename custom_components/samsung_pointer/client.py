@@ -104,7 +104,7 @@ async def get_device_info(session: aiohttp.ClientSession, host: str) -> dict[str
 
 
 class SamsungPointerClient:
-    """Keep one socket open; reconnect on demand and never queue old gestures."""
+    """Keep one socket open and coalesce movement while a send is in progress."""
 
     def __init__(
         self,
@@ -133,6 +133,8 @@ class SamsungPointerClient:
         self._auth_failed = False
         self._move_remainder_x = 0.0
         self._move_remainder_y = 0.0
+        self._queued_move_x = 0.0
+        self._queued_move_y = 0.0
 
     @property
     def connected(self) -> bool:
@@ -145,6 +147,7 @@ class SamsungPointerClient:
     async def connect(self, *, timeout: float = 12) -> None:
         async with self._lock:
             await self._connect(timeout)
+            self._clear_queued_moves()
 
     async def _connect(self, timeout: float) -> None:
         if self._closing:
@@ -233,23 +236,60 @@ class SamsungPointerClient:
                 self._notify()
             await ws.close()
 
-    async def move(self, x: float, y: float) -> None:
+    async def move(
+        self,
+        x: float,
+        y: float,
+        *,
+        speed_threshold: float = 8,
+        max_speed_gain: float = 4,
+    ) -> None:
         delta_x, delta_y = _movement_delta(x, y)
+        speed_threshold = float(speed_threshold)
+        max_speed_gain = float(max_speed_gain)
+        if not math.isfinite(speed_threshold) or speed_threshold <= 0:
+            raise ValueError("Speed threshold must be a positive finite number")
+        if not math.isfinite(max_speed_gain) or not 1 <= max_speed_gain <= 8:
+            raise ValueError("Maximum speed gain must be between 1 and 8")
         if delta_x == 0 and delta_y == 0:
             return
+        speed = math.hypot(delta_x, delta_y)
+        gain = min(max_speed_gain, max(1.0, speed / speed_threshold))
+        delta_x = max(-2000.0, min(2000.0, delta_x * gain))
+        delta_y = max(-2000.0, min(2000.0, delta_y * gain))
         if self._lock.locked():
-            return  # Drop gestures while connecting/sending; do not build a lagging queue.
+            self._queue_move(delta_x, delta_y)
+            return
         async with self._lock:
             if not self.connected:
                 await self._connect(12)
+                self._clear_queued_moves()
                 return  # The old gesture is stale after reconnect. The next one moves.
-            total_x = self._move_remainder_x + delta_x
-            total_y = self._move_remainder_y + delta_y
-            move_x, move_y = math.trunc(total_x), math.trunc(total_y)
-            self._move_remainder_x = total_x - move_x
-            self._move_remainder_y = total_y - move_y
-            if move_x or move_y:
-                await self._send(movement(move_x, move_y))
+            await self._send_move(delta_x, delta_y)
+            await self._flush_queued_moves()
+
+    def _queue_move(self, x: float, y: float) -> None:
+        self._queued_move_x = max(-2000.0, min(2000.0, self._queued_move_x + x))
+        self._queued_move_y = max(-2000.0, min(2000.0, self._queued_move_y + y))
+
+    def _clear_queued_moves(self) -> None:
+        self._queued_move_x = 0.0
+        self._queued_move_y = 0.0
+
+    async def _send_move(self, x: float, y: float) -> None:
+        total_x = self._move_remainder_x + x
+        total_y = self._move_remainder_y + y
+        move_x, move_y = math.trunc(total_x), math.trunc(total_y)
+        self._move_remainder_x = total_x - move_x
+        self._move_remainder_y = total_y - move_y
+        if move_x or move_y:
+            await self._send(movement(move_x, move_y))
+
+    async def _flush_queued_moves(self) -> None:
+        while self.connected and (self._queued_move_x or self._queued_move_y):
+            delta_x, delta_y = self._queued_move_x, self._queued_move_y
+            self._clear_queued_moves()
+            await self._send_move(delta_x, delta_y)
 
     async def click(self, button: str = "left") -> None:
         payload = click(button)
@@ -260,6 +300,7 @@ class SamsungPointerClient:
                 await self._connect(12)
                 raise PointerBusyError("Pointer reconnected; click again")
             await self._send(payload)
+            await self._flush_queued_moves()
 
     async def _send(self, payload: dict[str, Any]) -> None:
         try:
@@ -275,6 +316,7 @@ class SamsungPointerClient:
         self._authorized = False
         self._move_remainder_x = 0.0
         self._move_remainder_y = 0.0
+        self._clear_queued_moves()
         reader, self._reader = self._reader, None
         ws, self._ws = self._ws, None
         if reader:

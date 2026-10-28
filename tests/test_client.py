@@ -65,7 +65,7 @@ async def test_pair_move_click_and_reuse_connection(tv):
     await client.connect()
     assert saved == ["test-only-token"]
     assert client.connected
-    await client.move(12, -4)
+    await client.move(12, -4, max_speed_gain=1)
     await client.click()
     await wait_for(lambda: len(state["commands"]) == 2)
     assert state["commands"] == [movement(12, -4), click("left")]
@@ -81,6 +81,14 @@ async def test_fractional_moves_accumulate_until_a_whole_pixel(tv):
     await client.move(0.4, -0.4)
     await wait_for(lambda: len(state["commands"]) == 1)
     assert state["commands"] == [movement(1, -1)]
+
+
+async def test_fast_moves_get_speed_gain(tv):
+    client, state = tv
+    await client.connect()
+    await client.move(16, 0, speed_threshold=8, max_speed_gain=4)
+    await wait_for(lambda: len(state["commands"]) == 1)
+    assert state["commands"] == [movement(32, 0)]
 
 
 async def test_disconnect_reconnect_drops_old_gesture(tv):
@@ -105,16 +113,29 @@ async def test_click_not_replayed_after_reconnect(tv):
     assert state["commands"] == []
 
 
-async def test_busy_gestures_are_not_queued(tv):
+async def test_busy_gestures_are_coalesced(tv):
     client, state = tv
     await client.connect()
-    async with client._lock:
-        await client.move(100, 100)
-        with pytest.raises(PointerBusyError):
-            await client.click()
-    await client.move(1, 2)
-    await wait_for(lambda: len(state["commands"]) == 1)
-    assert state["commands"] == [movement(1, 2)]
+    sending = asyncio.Event()
+    release = asyncio.Event()
+    sent = []
+
+    async def delayed_send(payload):
+        sent.append(payload)
+        if len(sent) == 1:
+            sending.set()
+            await release.wait()
+
+    client._send = AsyncMock(side_effect=delayed_send)
+    first_move = asyncio.create_task(client.move(4, 0, max_speed_gain=1))
+    await sending.wait()
+    await client.move(2, 0, max_speed_gain=1)
+    await client.move(3, 0, max_speed_gain=1)
+    with pytest.raises(PointerBusyError):
+        await client.click()
+    release.set()
+    await first_move
+    assert sent == [movement(4, 0), movement(5, 0)]
 
 
 async def test_authorization_rejection_does_not_prompt_repeatedly(tv):

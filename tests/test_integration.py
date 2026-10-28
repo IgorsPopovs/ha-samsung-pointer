@@ -76,7 +76,12 @@ async def test_real_ha_setup_actions_and_unload(hass):
         await hass.services.async_call(
             DOMAIN, "move", {"entity_id": entity_id, "x": "12.5", "y": "-6"}, blocking=True
         )
-        move.assert_awaited_once_with(12.5, -6.0)
+        move.assert_awaited_once_with(
+            12.5,
+            -6.0,
+            speed_threshold=8.0,
+            max_speed_gain=4.0,
+        )
     with patch.object(entry.runtime_data, "click", new_callable=AsyncMock) as click:
         await hass.services.async_call(DOMAIN, "click", {"entity_id": entity_id}, blocking=True)
         click.assert_awaited_once_with("left")
