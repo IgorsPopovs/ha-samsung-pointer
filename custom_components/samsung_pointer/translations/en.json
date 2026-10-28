@@ -1,0 +1,35 @@
+{
+  "title": "Samsung Pointer",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect a Samsung TV",
+        "description": "Enter the local address of your powered-on TV. Samsung Pointer uses its own connection and does not modify SamsungTV Smart.",
+        "data": {
+          "host": "TV IP address or hostname",
+          "name": "Device name"
+        }
+      },
+      "pair": {
+        "title": "Authorize the pointer",
+        "description": "Have the TV remote ready. Press Submit, then allow **{client_name}** on the television. Pairing waits up to 60 seconds. No movement or click commands are sent during setup."
+      }
+    },
+    "progress": {
+      "pairing": "Allow **{client_name}** on your TV. Waiting for authorization (up to 60 seconds)."
+    },
+    "error": {
+      "invalid_host": "Enter an IP address or hostname, without http:// or a path.",
+      "cannot_connect": "Cannot read TV identity. Turn the TV on and check its local address."
+    },
+    "abort": {
+      "already_configured": "This TV is already configured.",
+      "wrong_tv": "This address belongs to a different TV. Add it separately.",
+      "not_authorized": "The TV did not authorize the connection. Check the device connection permissions on the TV and try again.",
+      "cannot_connect": "Could not connect. Check TV power, network, and permission to connect.",
+      "missing_token": "The TV did not provide a reusable pairing token. This model or firmware is not supported by this version.",
+      "reauth_successful": "TV authorization renewed.",
+      "reconfigure_successful": "TV connection updated."
+    }
+  }
+}

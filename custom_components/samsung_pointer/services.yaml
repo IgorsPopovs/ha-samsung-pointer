@@ -1,0 +1,47 @@
+move:
+  name: Move pointer
+  description: Send relative mouse movement. A disconnected socket reconnects and discards the stale first movement.
+  target:
+    entity:
+      integration: samsung_pointer
+      domain: remote
+  fields:
+    x:
+      name: Horizontal movement
+      description: Positive moves right, negative moves left. Adjust sensitivity in your remote card.
+      required: true
+      example: 12
+      selector:
+        number:
+          min: -2000
+          max: 2000
+          step: 0.1
+          mode: box
+    y:
+      name: Vertical movement
+      description: Positive moves down, negative moves up.
+      required: true
+      example: 0
+      selector:
+        number:
+          min: -2000
+          max: 2000
+          step: 0.1
+          mode: box
+click:
+  name: Click pointer
+  description: Send one mouse click. Experimental until verified on your TV and app. Never replayed after reconnect.
+  target:
+    entity:
+      integration: samsung_pointer
+      domain: remote
+  fields:
+    button:
+      name: Mouse button
+      default: left
+      selector:
+        select:
+          options:
+            - left
+            - right
+

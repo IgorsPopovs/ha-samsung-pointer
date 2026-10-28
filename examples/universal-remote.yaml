@@ -1,0 +1,46 @@
+# Replace all three entity IDs with your actual entities.
+# The pointer entity is separate from your existing Samsung TV remote.
+type: custom:universal-remote-card
+platform: Samsung TV
+remote_id: remote.living_room_tv
+media_player_id: media_player.living_room_tv
+rows:
+  - [back, power, home, pointer_connect]
+  - [pointer, volume_buttons]
+  - [navigation_buttons]
+custom_actions:
+  - type: button
+    name: pointer_connect
+    icon: mdi:cursor-default
+    tap_action:
+      action: perform-action
+      perform_action: remote.turn_on
+      target:
+        entity_id: remote.living_room_tv_pointer
+  - type: touchpad
+    name: pointer
+    icon: mdi:cursor-default
+    drag_action:
+      action: perform-action
+      perform_action: samsung_pointer.move
+      target:
+        entity_id: remote.living_room_tv_pointer
+      data:
+        x: '{{ (deltaX * 2) | round(0) }}'
+        y: '{{ (deltaY * 2) | round(0) }}'
+      repeat_delay: 50
+    tap_action:
+      action: perform-action
+      perform_action: samsung_pointer.click
+      target:
+        entity_id: remote.living_room_tv_pointer
+      data:
+        button: left
+    hold_action:
+      action: none
+    double_tap_action:
+      action: none
+    up: {}
+    down: {}
+    left: {}
+    right: {}
