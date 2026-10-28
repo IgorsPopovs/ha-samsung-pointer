@@ -77,7 +77,9 @@ custom_actions:
       data:
         x: '{{ deltaX * 2 }}'
         y: '{{ deltaY * 2 }}'
-      repeat_delay: 16
+        speed_threshold: 8
+        max_speed_gain: 4
+      repeat_delay: 0
     tap_action:
       action: perform-action
       perform_action: samsung_pointer.click
@@ -95,12 +97,14 @@ custom_actions:
     right: {}
 ```
 
-The gain of `2` and sampling interval of `16 ms` (about 60 Hz) are starting values,
-not measured latency guarantees. Fractional movement is accumulated until it
-reaches a whole TV pixel, rather than being rounded away per event. Tune the gain
-for your phone and TV. Verify single-tap clicks on a harmless screen before using
-the pad for normal navigation. Directional swipe actions are disabled when drag
-mode is enabled. See the
+The gain of `2`, speed threshold of `8`, and maximum speed gain of `4` are starting
+values, not measured latency guarantees. The speed threshold is the input distance
+per touch sample at which acceleration starts; increase it for more precise
+control, or set `max_speed_gain: 1` to disable acceleration. With `repeat_delay: 0`,
+the card forwards each pointer sample. The integration accumulates fractional
+movement and combines samples while a TV send is in progress, without building an
+unbounded queue. Verify movement and single-tap clicks on a harmless screen before
+normal use. Directional swipe actions are disabled when drag mode is enabled. See the
 [Universal Remote Card documentation](https://github.com/Nerwyn/universal-remote-card#touchpad-interactions).
 
 ## Pairing, updates and troubleshooting
@@ -110,8 +114,9 @@ mode is enabled. See the
 - If the TV forgets its permission, use the integration's **Reconfigure** menu.
   Reconfiguration verifies the same TV identity before saving the new address/token.
 - Existing SamsungTV Smart entities, apps, volume and power controls are untouched.
-- Commands are bounded; busy gestures are dropped rather than queued. Failed sends
-  are not retried because the TV may have already acted on them.
+- Commands are bounded; movement samples arriving during a send are coalesced into
+  one bounded movement. Failed sends are not retried because the TV may have already
+  acted on them.
 - Protocol support can vary by firmware and app. No fallback silently substitutes
   arrow keys for pointer movements.
 - To remove: delete the pointer element from your dashboard, remove Samsung Pointer

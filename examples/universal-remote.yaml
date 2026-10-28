@@ -28,7 +28,9 @@ custom_actions:
       data:
         x: '{{ deltaX * 2 }}'
         y: '{{ deltaY * 2 }}'
-      repeat_delay: 16
+        speed_threshold: 8
+        max_speed_gain: 4
+      repeat_delay: 0
     tap_action:
       action: perform-action
       perform_action: samsung_pointer.click
