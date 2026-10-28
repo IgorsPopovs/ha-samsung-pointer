@@ -26,9 +26,9 @@ custom_actions:
       target:
         entity_id: remote.living_room_tv_pointer
       data:
-        x: '{{ (deltaX * 2) | round(0) }}'
-        y: '{{ (deltaY * 2) | round(0) }}'
-      repeat_delay: 50
+        x: '{{ deltaX * 2 }}'
+        y: '{{ deltaY * 2 }}'
+      repeat_delay: 16
     tap_action:
       action: perform-action
       perform_action: samsung_pointer.click

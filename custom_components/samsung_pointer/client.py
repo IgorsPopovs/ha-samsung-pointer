@@ -50,12 +50,7 @@ def validate_host(value: str) -> str:
 
 def movement(x: float, y: float) -> dict[str, Any]:
     """Build bounded mouse deltas; accept templated numeric strings."""
-    values = []
-    for value in (x, y):
-        number = float(value)
-        if not math.isfinite(number) or abs(number) > 2000:
-            raise ValueError("Mouse delta must be finite and between -2000 and 2000")
-        values.append(round(number))
+    values = [round(value) for value in _movement_delta(x, y)]
     return {
         "method": "ms.remote.control",
         "params": {
@@ -64,6 +59,13 @@ def movement(x: float, y: float) -> dict[str, Any]:
             "TypeOfRemote": "ProcessMouseDevice",
         },
     }
+
+
+def _movement_delta(x: float, y: float) -> tuple[float, float]:
+    values = (float(x), float(y))
+    if any(not math.isfinite(value) or abs(value) > 2000 for value in values):
+        raise ValueError("Mouse delta must be finite and between -2000 and 2000")
+    return values
 
 
 def click(button: str) -> dict[str, Any]:
@@ -129,6 +131,8 @@ class SamsungPointerClient:
         self._authorized = False
         self._retry_at = 0.0
         self._auth_failed = False
+        self._move_remainder_x = 0.0
+        self._move_remainder_y = 0.0
 
     @property
     def connected(self) -> bool:
@@ -230,8 +234,8 @@ class SamsungPointerClient:
             await ws.close()
 
     async def move(self, x: float, y: float) -> None:
-        payload = movement(x, y)
-        if payload["params"]["Position"]["x"] == 0 and payload["params"]["Position"]["y"] == 0:
+        delta_x, delta_y = _movement_delta(x, y)
+        if delta_x == 0 and delta_y == 0:
             return
         if self._lock.locked():
             return  # Drop gestures while connecting/sending; do not build a lagging queue.
@@ -239,7 +243,13 @@ class SamsungPointerClient:
             if not self.connected:
                 await self._connect(12)
                 return  # The old gesture is stale after reconnect. The next one moves.
-            await self._send(payload)
+            total_x = self._move_remainder_x + delta_x
+            total_y = self._move_remainder_y + delta_y
+            move_x, move_y = math.trunc(total_x), math.trunc(total_y)
+            self._move_remainder_x = total_x - move_x
+            self._move_remainder_y = total_y - move_y
+            if move_x or move_y:
+                await self._send(movement(move_x, move_y))
 
     async def click(self, button: str = "left") -> None:
         payload = click(button)
@@ -263,6 +273,8 @@ class SamsungPointerClient:
 
     async def _disconnect(self) -> None:
         self._authorized = False
+        self._move_remainder_x = 0.0
+        self._move_remainder_y = 0.0
         reader, self._reader = self._reader, None
         ws, self._ws = self._ws, None
         if reader:

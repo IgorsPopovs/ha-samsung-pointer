@@ -72,6 +72,17 @@ async def test_pair_move_click_and_reuse_connection(tv):
     assert state["connections"] == 1
 
 
+async def test_fractional_moves_accumulate_until_a_whole_pixel(tv):
+    client, state = tv
+    await client.connect()
+    await client.move(0.4, -0.4)
+    await client.move(0.4, -0.4)
+    assert state["commands"] == []
+    await client.move(0.4, -0.4)
+    await wait_for(lambda: len(state["commands"]) == 1)
+    assert state["commands"] == [movement(1, -1)]
+
+
 async def test_disconnect_reconnect_drops_old_gesture(tv):
     client, state = tv
     await client.connect()

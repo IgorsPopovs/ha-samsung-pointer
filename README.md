@@ -75,9 +75,9 @@ custom_actions:
       target:
         entity_id: remote.living_room_tv_pointer
       data:
-        x: '{{ (deltaX * 2) | round(0) }}'
-        y: '{{ (deltaY * 2) | round(0) }}'
-      repeat_delay: 50
+        x: '{{ deltaX * 2 }}'
+        y: '{{ deltaY * 2 }}'
+      repeat_delay: 16
     tap_action:
       action: perform-action
       perform_action: samsung_pointer.click
@@ -95,10 +95,12 @@ custom_actions:
     right: {}
 ```
 
-The gain of `2` and sampling interval of `50 ms` are starting values, not measured
-latency guarantees. Tune them for your phone and TV. Verify single-tap clicks on a
-harmless screen before using the pad for normal navigation. Directional swipe
-actions are disabled when drag mode is enabled. See the
+The gain of `2` and sampling interval of `16 ms` (about 60 Hz) are starting values,
+not measured latency guarantees. Fractional movement is accumulated until it
+reaches a whole TV pixel, rather than being rounded away per event. Tune the gain
+for your phone and TV. Verify single-tap clicks on a harmless screen before using
+the pad for normal navigation. Directional swipe actions are disabled when drag
+mode is enabled. See the
 [Universal Remote Card documentation](https://github.com/Nerwyn/universal-remote-card#touchpad-interactions).
 
 ## Pairing, updates and troubleshooting
@@ -148,4 +150,3 @@ Independent implementation of the local protocol used by
 No source code is copied from those implementations. Not affiliated with Samsung.
 
 MIT license. See [LICENSE](LICENSE).
-

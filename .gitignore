@@ -10,4 +10,4 @@ htmlcov/
 *.token
 secrets.yaml
 dist/
-
+.idea/
