@@ -58,6 +58,52 @@ data:
 No scroll, held-button, text-entry, power or app-launch commands are implemented.
 Continue using your current TV integration for those features.
 
+## Precision trackpad (v0.2.0)
+
+The integration now bundles its own card, **Samsung Pointer**. It captures every
+pointer sample, uses a radial drag threshold (including diagonals), preserves
+fractional movement, and sends at most one Home Assistant request at a time.
+It explicitly disables the backend's sample-size acceleration for its movements.
+Existing Universal Remote Card configurations continue using their own settings.
+
+1. Update the integration and restart Home Assistant.
+2. Add a dashboard resource of type **JavaScript module**:
+   `/samsung_pointer/samsung-pointer-card.js?v=0.2.0`.
+3. Add the card using your actual Pointer entity:
+
+```yaml
+type: custom:samsung-pointer-card
+entity: remote.living_room_tv_pointer
+sensitivity: 1.5
+interval: 25
+```
+
+Use **Подключить** to connect, drag to move, tap briefly or press **Клик** to click.
+Lifting the finger lets you reposition it without moving the cursor. The sensitivity
+slider changes gain for the current card session; use `sensitivity` in the card
+configuration to save a default. Controls currently use Russian labels.
+The focusable pad also supports arrow keys and Enter/Space. No inertia, smoothing,
+or acceleration is applied. A long stationary hold does not click.
+
+`interval` accepts 16–50 ms (default 25); `sensitivity` accepts 0.25–4.
+Movement samples older than 100 ms are dropped instead of replayed after a stall;
+normal short batches retain their total displacement. Cancellation, a second
+finger, page hiding, or card removal clears unsent movement. A short final batch
+may still be delivered after finger lift; already sent commands cannot be recalled.
+A slow network can still delay the current in-flight command, so this is not a
+hard end-to-end latency guarantee. Clicks are refused while movement is pending.
+
+`show_latency: true` shows the last HA service-call response time, **not** the time
+until the cursor appears on the television. Physical TV response must be assessed
+on the TV. The bundled static file contains no device addresses or credentials;
+all commands use the current authenticated HA connection and the configured entity.
+The file is served without long-lived cache headers; use a version query when
+updating the dashboard resource and reload open dashboards after an update.
+
+The card and integration update together through HACS. No second repository is
+required. For rollback, restore your previous remote card configuration and remove
+the added resource. The existing integration entry and pairing can remain.
+
 ## Universal Remote Card
 
 The existing card supports `drag_action`; a card fork is not needed. Add this
@@ -142,6 +188,7 @@ python3.14 -m venv .venv
 .venv/bin/ruff check .
 .venv/bin/ruff format --check .
 .venv/bin/pytest -q
+npm test
 ```
 
 Tests use a simulated local TV and an isolated HA instance. They never operate a

@@ -1,5 +1,8 @@
 """Samsung Pointer: local mouse control alongside existing TV integrations."""
 
+from pathlib import Path
+
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_TOKEN, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant, callback
@@ -9,6 +12,20 @@ from .client import SamsungPointerClient
 from .const import CLIENT_NAME, CONF_CLIENT_NAME
 
 PLATFORMS = [Platform.REMOTE]
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Serve the bundled card once; dashboard registration remains explicit."""
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                "/samsung_pointer/samsung-pointer-card.js",
+                str(Path(__file__).parent / "www" / "samsung-pointer-card.js"),
+                False,
+            )
+        ]
+    )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

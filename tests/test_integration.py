@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import aiohttp
 import pytest
-from homeassistant import bootstrap, config_entries, loader
+from homeassistant import auth, bootstrap, config_entries, loader
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
@@ -25,6 +25,7 @@ async def hass(tmp_path):
     loader.async_setup(hass)
     hass.config_entries = config_entries.ConfigEntries(hass, {})
     assert await bootstrap.async_load_base_functionality(hass)
+    hass.auth = await auth.auth_manager_from_config(hass, [], [])
     # Use a normal aiohttp session to avoid multicast discovery in unit tests.
     async with aiohttp.ClientSession() as session:
         with (
@@ -184,3 +185,15 @@ async def test_token_rotation_diagnostics_and_shutdown(hass):
     assert "token" not in repr(diagnostics)
     await hass.async_stop(force=True)
     assert client._closing
+
+
+async def test_bundled_card_served_by_real_ha_http(hass, aiohttp_client):
+    assert await async_setup_component(hass, DOMAIN, {})
+    client = await aiohttp_client(hass.http.app)
+    response = await client.get("/samsung_pointer/samsung-pointer-card.js")
+    assert response.status == 200
+    assert "javascript" in response.headers["Content-Type"]
+    source = await response.text()
+    assert "class SamsungPointerCard" in source
+    assert "max_speed_gain: 1" in source
+    assert await async_setup_component(hass, DOMAIN, {})  # no duplicate route

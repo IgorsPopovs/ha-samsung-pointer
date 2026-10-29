@@ -1,0 +1,9 @@
+# Add this module resource after updating Samsung Pointer to v0.2.0 and restarting HA:
+# /samsung_pointer/samsung-pointer-card.js?v=0.2.0
+# Replace entity with your actual Samsung Pointer remote.
+type: custom:samsung-pointer-card
+entity: remote.living_room_tv_pointer
+sensitivity: 1.5
+interval: 25
+# Optional: displays HA call response time, NOT TV input latency.
+show_latency: false
