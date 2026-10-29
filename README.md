@@ -202,3 +202,24 @@ Independent implementation of the local protocol used by
 No source code is copied from those implementations. Not affiliated with Samsung.
 
 MIT license. See [LICENSE](LICENSE).
+
+### Icon-only trackpad switch (v0.2.1)
+
+Set `compact: true` on `custom:samsung-pointer-card` to hide the heading,
+connection controls, sensitivity slider, and all visible status/help text. The
+configured sensitivity and interval still apply. The pad retains accessible
+labels and a status tooltip. If disconnected, the first touch connects; repeat
+the gesture once connected.
+
+`custom:samsung-pointer-switch-card` takes two complete card configurations:
+`off_card` (legacy pad/remote) and `on_card` (a vertical stack containing the
+compact precision pad and the other remote buttons). Its cursor-icon button
+switches between them and lights up for the precision mode. It starts off on
+page load; mode is local to this card instance, with no helper or automation.
+Switching removes the previous card, clearing unsent precision-pad movements.
+Both modes receive the current HA state through the standard card helpers.
+
+Update the existing module resource URL to
+`/samsung_pointer/samsung-pointer-card.js?v=0.2.1` and reload the dashboard after
+installing the update. Card-only file changes on an already running v0.2.0
+installation do not require an HA restart.

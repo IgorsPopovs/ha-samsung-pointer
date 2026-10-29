@@ -75,3 +75,37 @@ test('card sends unaccelerated fractional deltas to the selected entity', async 
   assert.deepEqual(await card.pump.send(.3,.4),['samsung_pointer','move',{x:.3,y:.4,max_speed_gain:1},{entity_id:'remote.test_pointer'}]);
   card.pump.dispose();
 });
+
+test('mode switch replaces the pad and passes HA to the active card', async () => {
+  const { SamsungPointerSwitchCard } = await import('../custom_components/samsung_pointer/www/samsung-pointer-card.js');
+  const card = new SamsungPointerSwitchCard();
+  const rendered = [], pressed = [];
+  let removed = 0;
+  card.config = { off_card: {type:'old'}, on_card:{type:'new'} };
+  card.shadowRoot = {querySelector:selector=>selector==='button'
+    ? {setAttribute:(_name,value)=>pressed.push(value)}
+    : {replaceChildren:child=>{if(child)rendered.push(child)}}};
+  globalThis.window = {loadCardHelpers:async()=>({createCardElement:config=>({config,remove:()=>removed++})})};
+  card.hass={test:true}; await card.showCard();
+  assert.equal(card.child.config.type,'old'); assert.equal(card.child.hass.test,true);
+  card.toggle(); await Promise.resolve(); await Promise.resolve();
+  assert.equal(card.child.config.type,'new'); assert.equal(removed,1); assert.deepEqual(pressed,['true']);
+  card.toggle(); await Promise.resolve(); await Promise.resolve();
+  assert.equal(card.child.config.type,'old'); assert.equal(removed,2);
+  card.disconnectedCallback(); assert.equal(removed,3); assert.equal(card.child,null);
+  delete globalThis.window;
+});
+
+test('slow card helper cannot mount an obsolete mode after rapid switching', async () => {
+  const { SamsungPointerSwitchCard } = await import('../custom_components/samsung_pointer/www/samsung-pointer-card.js');
+  const card = new SamsungPointerSwitchCard(), pending=[], rendered=[];
+  card.config={off_card:{type:'old'},on_card:{type:'new'}};
+  card.shadowRoot={querySelector:()=>({replaceChildren:c=>{if(c)rendered.push(c)},setAttribute:()=>{}})};
+  globalThis.window={loadCardHelpers:()=>new Promise(resolve=>pending.push(resolve))};
+  const first=card.showCard(); card.toggle();
+  const helpers={createCardElement:config=>({config,remove:()=>{}})};
+  pending[0](helpers); await first; assert.equal(rendered.length,0);
+  pending[1](helpers); await Promise.resolve(); await Promise.resolve();
+  assert.equal(rendered.length,1); assert.equal(rendered[0].config.type,'new');
+  delete globalThis.window;
+});

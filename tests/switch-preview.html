@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pointer mode switch — local preview</title>
+<style>body{background:#11151e;color:#eee;font:15px system-ui;margin:24px}main{max-width:390px;margin:auto}</style>
+<main><p>Локальный стенд переключателя. Телевизор не подключён.</p><samsung-pointer-switch-card></samsung-pointer-switch-card><p id="report">Кликов: 0</p></main>
+<script type="module">
+import '../custom_components/samsung_pointer/www/samsung-pointer-card.js';
+window.loadCardHelpers=async()=>({createCardElement:config=>{
+ if(config.type==='custom:samsung-pointer-card'){const p=document.createElement('samsung-pointer-card');p.setConfig(config);return p;}
+ const p=document.createElement('div');p.style.cssText='height:230px;border:1px solid #7774;border-radius:20px;display:grid;place-items:center;background:#191e27';p.textContent='✥';p.setAttribute('aria-label','Прежний курсор (макет)');return p;
+}});
+let clicks=0;const card=document.querySelector('samsung-pointer-switch-card');
+card.setConfig({off_card:{type:'legacy-preview'},on_card:{type:'custom:samsung-pointer-card',entity:'remote.preview',compact:true,sensitivity:1.5,interval:25}});
+card.hass={states:{'remote.preview':{state:'on'}},callService:async(d,s)=>{if(s==='click')document.querySelector('#report').textContent=`Кликов: ${++clicks}`;}};
+</script>

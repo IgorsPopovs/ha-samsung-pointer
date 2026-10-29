@@ -95,7 +95,7 @@ export class SamsungPointerCard extends BaseElement {
     this.gain = sensitivity; this.render(); this.createPump(); this.updateState();
   }
   set hass(hass) { this._hass = hass; this.updateState(); }
-  getCardSize() { return 5; }
+  getCardSize() { return this.config?.compact ? 3 : 5; }
   getGridOptions() { return { columns: 12, rows: 5, min_columns: 6 }; }
   static getStubConfig() { return { entity: 'remote.s90d_pointer', sensitivity: 1.5, interval: 25 }; }
   connectedCallback() {
@@ -133,7 +133,8 @@ export class SamsungPointerCard extends BaseElement {
     this.shadowRoot.querySelector('.status').classList.toggle('online', connected);
     this.shadowRoot.querySelector('.connect').disabled = Boolean(this.connecting) || connected;
   }
-  note(text) { const el = this.shadowRoot?.querySelector('.hint'); if (el) el.textContent = text; }
+  note(text) { const el = this.shadowRoot?.querySelector('.hint'); if (el) el.textContent = text;
+    const pad = this.shadowRoot?.querySelector('.pad'); if (pad) pad.title = text; }
   async connect() {
     if (this.connecting || this.ready || this.pump?.busy) return;
     this.cancelGesture(); this.connecting = true; this.updateState();
@@ -196,6 +197,8 @@ export class SamsungPointerCard extends BaseElement {
     this.shadowRoot.innerHTML = `
       <style>
         :host { display:block; }
+        .compact header, .compact .controls, .compact .hint, .compact .latency { display:none; }
+        .compact { padding:0; background:transparent; border:0; box-shadow:none; }
         ha-card { display:block; border-radius:var(--ha-card-border-radius,16px); padding:16px; background:var(--ha-card-background,var(--card-background-color,#202329)); color:var(--primary-text-color,#eee); }
         header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
         .title { font-size:16px; font-weight:600; } .status { font-size:12px; opacity:.65; }
@@ -212,7 +215,7 @@ export class SamsungPointerCard extends BaseElement {
         .latency { font-size:11px; opacity:.6; }
         @media(max-width:360px) { ha-card {padding:12px} .pad {height:210px} }
       </style>
-      <ha-card>
+      <ha-card class="${this.config.compact ? 'compact' : ''}">
         <header><div><div class="title">Курсор ТВ</div><div class="status" role="status"></div></div><button class="connect">Подключить</button></header>
         <div class="pad" tabindex="0" role="application" aria-label="Трекпад телевизора. Стрелки перемещают курсор, Enter — клик.">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2v18l5-5 4 7 3-2-4-7h7z"/></svg>
@@ -243,4 +246,63 @@ if (globalThis.customElements && !customElements.get('samsung-pointer-card')) {
   customElements.define('samsung-pointer-card', SamsungPointerCard);
   window.customCards = window.customCards || [];
   window.customCards.push({ type: 'samsung-pointer-card', name: 'Samsung Pointer', description: 'Precise local TV trackpad', preview: false });
+}
+
+
+/** Local UI switch: no helper, automation, or cross-device mode changes. */
+export class SamsungPointerSwitchCard extends BaseElement {
+  constructor() {
+    super(); this.enabled = false; this.renderVersion = 0;
+    if (this.attachShadow) this.attachShadow({ mode: 'open' });
+  }
+  setConfig(config) {
+    if (!config.off_card || !config.on_card) throw new Error('Set off_card and on_card');
+    this.config = config; this.enabled = false;
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host {display:block}
+        ha-card {display:block; padding:12px; border-radius:var(--ha-card-border-radius,16px); background:var(--ha-card-background,var(--card-background-color,#202329));}
+        .toolbar {display:flex; justify-content:flex-end; margin-bottom:8px}
+        button {display:grid; place-items:center; width:48px; height:44px; border:1px solid var(--divider-color,#ffffff30); border-radius:14px; background:transparent; color:var(--primary-text-color,#eee); cursor:pointer}
+        button[aria-pressed="true"] {color:var(--primary-color,#56b8ff); background:color-mix(in srgb,var(--primary-color,#56b8ff) 18%,transparent); border-color:currentColor}
+        button:focus-visible {outline:2px solid var(--primary-color,#56b8ff); outline-offset:3px}
+        svg {width:24px; height:24px; fill:currentColor; pointer-events:none}
+        .error {color:var(--error-color,#f66); text-align:center}
+      </style>
+      <ha-card><div class="toolbar"><button aria-label="Новый трекпад" title="Новый трекпад" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2v18l5-5 4 7 3-2-4-7h7z"/></svg></button></div><div class="content"></div></ha-card>`;
+    this.shadowRoot.querySelector('button').onclick = () => this.toggle();
+    void this.showCard();
+  }
+  set hass(hass) { this._hass = hass; if (this.child) this.child.hass = hass; }
+  getCardSize() { return this.child?.getCardSize?.() ?? 8; }
+  connectedCallback() { if (this.config && !this.child) void this.showCard(); }
+  disconnectedCallback() {
+    this.renderVersion++; this.child?.remove(); this.child = null;
+  }
+  toggle() {
+    this.enabled = !this.enabled;
+    this.shadowRoot.querySelector('button').setAttribute('aria-pressed', String(this.enabled));
+    void this.showCard();
+  }
+  async showCard() {
+    const version = ++this.renderVersion;
+    const content = this.shadowRoot.querySelector('.content');
+    // Removing the previous pad immediately cancels its pending movement.
+    this.child?.remove(); this.child = null; content.replaceChildren();
+    try {
+      const helpers = await window.loadCardHelpers();
+      if (version !== this.renderVersion) return;
+      const child = helpers.createCardElement(this.enabled ? this.config.on_card : this.config.off_card);
+      if (this._hass) child.hass = this._hass;
+      this.child = child; content.replaceChildren(child);
+    } catch {
+      if (version !== this.renderVersion) return;
+      const warning = document.createElement('div'); warning.className = 'error';
+      warning.textContent = '⚠'; warning.title = 'Не удалось загрузить карточку. Обновите страницу.';
+      warning.setAttribute('aria-label',warning.title); content.replaceChildren(warning);
+    }
+  }
+}
+if (globalThis.customElements && !customElements.get('samsung-pointer-switch-card')) {
+  customElements.define('samsung-pointer-switch-card', SamsungPointerSwitchCard);
 }
