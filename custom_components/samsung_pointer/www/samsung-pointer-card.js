@@ -263,7 +263,7 @@ export class SamsungPointerSwitchCard extends BaseElement {
         :host {display:block}
         ha-card {display:block; position:relative; padding:0; border:0; box-shadow:none; background:transparent;}
         .toolbar {position:absolute; top:8px; right:8px; z-index:2; display:flex}
-        button {display:grid; place-items:center; width:48px; height:44px; border:1px solid var(--divider-color,#ffffff30); border-radius:14px; background:transparent; color:var(--primary-text-color,#eee); cursor:pointer}
+        button {display:grid; place-items:center; width:48px; height:44px; border:1px solid var(--divider-color,#ffffff30); border-radius:20px; background:transparent; color:var(--primary-text-color,#eee); cursor:pointer}
         button[aria-pressed="true"] {color:var(--primary-color,#56b8ff); background:color-mix(in srgb,var(--primary-color,#56b8ff) 18%,transparent); border-color:currentColor}
         button:focus-visible {outline:2px solid var(--primary-color,#56b8ff); outline-offset:3px}
         svg {width:24px; height:24px; fill:currentColor; pointer-events:none}
