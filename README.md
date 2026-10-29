@@ -223,3 +223,5 @@ Update the existing module resource URL to
 `/samsung_pointer/samsung-pointer-card.js?v=0.2.1` and reload the dashboard after
 installing the update. Card-only file changes on an already running v0.2.0
 installation do not require an HA restart.
+
+The mode button is overlaid inside the top-right corner of the trackpad. Use pad-only cards for `off_card` and `on_card`; place shared remote buttons outside the switch in a vertical stack.
