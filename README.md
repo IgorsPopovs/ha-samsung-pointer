@@ -225,3 +225,8 @@ installing the update. Card-only file changes on an already running v0.2.0
 installation do not require an HA restart.
 
 The mode button is overlaid inside the top-right corner of the trackpad. Use pad-only cards for `off_card` and `on_card`; place shared remote buttons outside the switch in a vertical stack.
+
+### Hold-to-tilt (v0.3.0)
+Set `gyroscope: true` on the precision card. Tap the small sensor button once to request orientation access from a secure HTTPS context. Hold a stationary finger for 400 ms, then tilt the phone sideways/forward to move the cursor. Release, blur, hide or switch mode cancels unsent motion and sensor subscription; no click is sent on release. Each hold starts with a fresh baseline. Sensor permission is per card instance; unavailable sensors leave normal touch control available. Physical iPhone validation is required.
+
+The switch accepts an optional `side_card` for a 72px volume column shared by both modes.

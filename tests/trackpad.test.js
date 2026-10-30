@@ -109,3 +109,31 @@ test('slow card helper cannot mount an obsolete mode after rapid switching', asy
   assert.equal(rendered.length,1); assert.equal(rendered[0].config.type,'new');
   delete globalThis.window;
 });
+
+test('tilt starts without jump, stops with phone and handles screen rotation and stale events', async () => {
+  const {TiltTracker}=await import('../custom_components/samsung_pointer/www/samsung-pointer-card.js');
+  const t=new TiltTracker();
+  assert.deepEqual(t.sample(20,10,0,0),[0,0]);
+  assert.deepEqual(t.sample(22,13,0,20),[36,24]);
+  assert.deepEqual(t.sample(22,13,0,40),[0,0]);
+  assert.deepEqual(t.sample(30,30,0,300),[0,0]);
+  assert.deepEqual(t.sample(30,30,90,320),[0,0]);
+  const [x,y]=t.sample(32,33,90,340); assert.ok(Math.abs(x-24)<1e-8); assert.ok(Math.abs(y+36)<1e-8);
+  assert.deepEqual(t.sample(null,0,90,350),[0,0]);
+  assert.deepEqual(t.sample(20,0,90,360),[0,0]);
+});
+test('tilt rejects pole jumps and handles wrapped angles', async () => {
+  const {TiltTracker}=await import('../custom_components/samsung_pointer/www/samsung-pointer-card.js');
+  const t=new TiltTracker();t.sample(179,0,0,0);
+  assert.deepEqual(t.sample(-179,0,0,20),[0,24]);
+  assert.deepEqual(t.sample(0,80,0,40),[0,0]);
+});
+test('releasing gyro cancels queued motion, sensor subscription, and never clicks', () => {
+  const c=new SamsungPointerCard(); let cleared=0,removed=0,clicked=0;
+  c.pointerId=7;c.gesture={};c.gyroActive=true;c.orientationHandler=()=>{};
+  c.pump={clear:()=>cleared++};c.doClick=()=>clicked++;
+  globalThis.window={removeEventListener:()=>removed++};
+  c.up({pointerId:7});assert.equal(c.pointerId,null);assert.equal(c.gyroActive,false);
+  assert.equal(cleared,1);assert.equal(removed,1);assert.equal(clicked,0);
+  delete globalThis.window;
+});

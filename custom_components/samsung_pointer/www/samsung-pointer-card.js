@@ -75,6 +75,22 @@ export class MotionPump {
   dispose() { this.clear(); this.disposed = true; }
 }
 
+/** Relative tilt, re-anchored every hold. No drift when the phone stops. */
+export class TiltTracker {
+  constructor() { this.previous = null; }
+  sample(beta, gamma, angle, now) {
+    if (![beta, gamma, angle, now].every(Number.isFinite)) { this.previous = null; return [0, 0]; }
+    const prev = this.previous; this.previous = { beta, gamma, angle, now };
+    if (!prev || angle !== prev.angle || now - prev.now > 150) return [0, 0];
+    const wrap = v => ((v + 540) % 360) - 180;
+    const dx = wrap(gamma - prev.gamma), dy = wrap(beta - prev.beta);
+    // Reject orientation discontinuities (including crossing the Euler pole).
+    if (Math.abs(dx) > 20 || Math.abs(dy) > 20) return [0, 0];
+    const a = angle * Math.PI / 180;
+    return [(dx*Math.cos(a)+dy*Math.sin(a))*12, (dy*Math.cos(a)-dx*Math.sin(a))*12];
+  }
+}
+
 const BaseElement = globalThis.HTMLElement ?? class {};
 export class SamsungPointerCard extends BaseElement {
   constructor() {
@@ -143,7 +159,47 @@ export class SamsungPointerCard extends BaseElement {
     catch { this.note('Не удалось подключиться. Проверьте ТВ и разрешение подключения.'); }
     finally { this.connecting = false; this.updateState(); }
   }
+  stopTilt() {
+    clearTimeout(this.holdTimer); this.holdTimer = null;
+    clearTimeout(this.sensorTimer); this.sensorTimer = null;
+    if (this.orientationHandler) window.removeEventListener('deviceorientation', this.orientationHandler);
+    this.orientationHandler = null; this.tilt = null; this.gyroActive = false;
+    this.shadowRoot?.querySelector('.pad')?.classList.remove('gyro');
+  }
+  async enableGyro() {
+    const status = this.shadowRoot.querySelector('.gyro-status');
+    if (!window.isSecureContext) { status.textContent = 'Для гироскопа откройте https://aligor.us'; return; }
+    if (!window.DeviceOrientationEvent) { status.textContent = 'Датчики движения недоступны'; return; }
+    try {
+      const result = typeof DeviceOrientationEvent.requestPermission === 'function'
+        ? await DeviceOrientationEvent.requestPermission() : 'granted';
+      this.gyroAllowed = result === 'granted';
+      status.textContent = this.gyroAllowed ? 'Удерживайте палец для управления наклоном' : 'Нет разрешения на датчики движения';
+      this.shadowRoot.querySelector('.gyro-enable').classList.toggle('allowed', this.gyroAllowed);
+    } catch { status.textContent = 'Доступ к датчикам недоступен. Попробуйте HTTPS в Safari.'; }
+  }
+  armTilt(e) {
+    if (!this.config.gyroscope || !this.gyroAllowed || e.pointerType !== 'touch') return;
+    this.holdTimer = setTimeout(() => {
+      if (!this.gesture || this.gesture.moved || this.pointerId == null) return;
+      this.gyroActive = true; this.pump.clear(); this.tilt = new TiltTracker();
+      this.shadowRoot.querySelector('.pad').classList.add('gyro');
+      this.orientationHandler = event => {
+        if (!this.gyroActive || !this.ready || this.pointerId == null) return;
+        if (Number.isFinite(event.beta) && Number.isFinite(event.gamma)) clearTimeout(this.sensorTimer);
+        const [x,y] = this.tilt.sample(event.beta, event.gamma,
+          window.screen?.orientation?.angle ?? window.orientation ?? 0, performance.now());
+        if (x || y) this.pump.add(x, y);
+      };
+      window.addEventListener('deviceorientation', this.orientationHandler);
+      this.sensorTimer = setTimeout(() => {
+        this.cancelGesture();
+        this.shadowRoot.querySelector('.gyro-status').textContent = 'Нет данных датчиков. Откройте HTTPS в Safari и разрешите движение.';
+      }, 1000);
+    }, 400);
+  }
   cancelGesture() {
+    this.stopTilt();
     const id = this.pointerId; this.pointerId = null; this.gesture = null;
     this.pump?.clear();
     const pad = this.shadowRoot?.querySelector('.pad');
@@ -162,6 +218,7 @@ export class SamsungPointerCard extends BaseElement {
     e.currentTarget.setPointerCapture(e.pointerId);
     e.currentTarget.classList.add('active');
     this.note('Проведите пальцем · касание — клик');
+    this.armTilt(e);
   }
   move(e) {
     if (e.pointerId !== this.pointerId || !this.gesture) return;
@@ -171,11 +228,15 @@ export class SamsungPointerCard extends BaseElement {
     for (const sample of samples.length ? samples : [e]) this.sample(sample);
   }
   sample(e) {
+    if (this.gyroActive) return;
     const [x, y] = this.gesture.move(e.clientX, e.clientY);
+    if (this.gesture.moved) { clearTimeout(this.holdTimer); this.holdTimer = null; }
     if (x || y) this.pump.add(x * this.gain, y * this.gain);
   }
   up(e) {
     if (e.pointerId !== this.pointerId || !this.gesture) return;
+    if (this.gyroActive) { this.cancelGesture(); return; }
+    this.stopTilt();
     this.sample(e); const tap = this.gesture.isTap(performance.now());
     this.pointerId = null; this.gesture = null;
     e.currentTarget.classList.remove('active');
@@ -206,7 +267,12 @@ export class SamsungPointerCard extends BaseElement {
         button { font:inherit; color:inherit; background:transparent; border:1px solid var(--divider-color,#ffffff30); border-radius:12px; padding:9px 13px; cursor:pointer; }
         button:disabled { opacity:.45; cursor:default; }
         button:focus-visible,.pad:focus-visible { outline:2px solid var(--primary-color,#56b8ff); outline-offset:3px; }
-        .pad { height:230px; box-sizing:border-box; border:1px solid var(--divider-color,#ffffff30); border-radius:20px; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; cursor:crosshair; display:grid; place-items:center; background:radial-gradient(circle,#ffffff12 1px,transparent 1px) 0 0/12px 12px, #171b22; }
+        .pad { position:relative; height:230px; box-sizing:border-box; border:1px solid var(--divider-color,#ffffff30); border-radius:20px; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; cursor:crosshair; display:grid; place-items:center; background:radial-gradient(circle,#ffffff12 1px,transparent 1px) 0 0/12px 12px, #171b22; }
+        .gyro-enable { position:absolute; bottom:8px; left:8px; width:36px; height:36px; padding:0; border-radius:14px; }
+        .gyro-enable.allowed { color:var(--primary-color,#56b8ff); }
+        .pad.gyro { box-shadow:inset 0 0 0 2px var(--primary-color,#56b8ff); }
+        .gyro-status { position:absolute; bottom:48px; left:8px; right:8px; font-size:12px; background:var(--card-background-color,#202329); border-radius:8px; padding:6px; }
+        .gyro-status:empty { display:none; }
         .pad.active { border-color:var(--primary-color,#56b8ff); }
         svg { width:38px; fill:#aab4c3; pointer-events:none; }
         .controls { display:flex; align-items:center; gap:12px; margin-top:14px; }
@@ -219,6 +285,7 @@ export class SamsungPointerCard extends BaseElement {
         <header><div><div class="title">Курсор ТВ</div><div class="status" role="status"></div></div><button class="connect">Подключить</button></header>
         <div class="pad" tabindex="0" role="application" aria-label="Трекпад телевизора. Стрелки перемещают курсор, Enter — клик.">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2v18l5-5 4 7 3-2-4-7h7z"/></svg>
+          ${this.config.gyroscope ? '<button class="gyro-enable" aria-label="Разрешить гироскоп" title="Разрешить гироскоп">◉</button><span class="gyro-status" role="status"></span>' : ''}
         </div>
         <div class="controls"><label>Чувствительность <output></output><input type="range" min="0.25" max="4" step="0.25" aria-label="Чувствительность"></label><button class="click">Клик</button></div>
         <p class="hint" aria-live="polite">Проведите пальцем · касание — клик</p><div class="latency"></div>
@@ -229,7 +296,12 @@ export class SamsungPointerCard extends BaseElement {
     const range = root.querySelector('input'); range.value = String(this.gain);
     root.querySelector('output').textContent = `${this.gain}×`;
     range.oninput = () => { this.cancelGesture(); this.gain = Number(range.value); root.querySelector('output').textContent = `${this.gain}×`; };
-    pad.onpointerdown = e => this.down(e); pad.onpointermove = e => this.move(e); pad.onpointerup = e => this.up(e);
+    const gyroButton = root.querySelector('.gyro-enable');
+    if (gyroButton) {
+      for (const name of ['pointerdown','pointerup','pointermove','pointercancel','keydown','keyup']) gyroButton.addEventListener(name, e => e.stopPropagation());
+      gyroButton.onclick = e => { e.stopPropagation(); void this.enableGyro(); };
+    }
+    pad.onpointerdown = e => { if (this.gyroAllowed) root.querySelector('.gyro-status').textContent = ''; this.down(e); }; pad.onpointermove = e => this.move(e); pad.onpointerup = e => this.up(e);
     pad.onpointercancel = () => this.cancelGesture();
     pad.onlostpointercapture = () => { if (this.pointerId != null) this.cancelGesture(); };
     pad.oncontextmenu = e => e.preventDefault();
@@ -257,11 +329,16 @@ export class SamsungPointerSwitchCard extends BaseElement {
   }
   setConfig(config) {
     if (!config.off_card || !config.on_card) throw new Error('Set off_card and on_card');
+    this.sideChild?.remove(); this.sideChild = null;
     this.config = config; this.enabled = false;
     this.shadowRoot.innerHTML = `
       <style>
         :host {display:block}
         ha-card {display:block; position:relative; padding:0; border:0; box-shadow:none; background:transparent;}
+        .layout {display:grid; grid-template-columns:minmax(0,1fr); gap:12px; align-items:center}
+        .layout.with-side {grid-template-columns:minmax(0,1fr) 72px}
+        .pad-shell {position:relative; min-width:0}
+        .side:empty {display:none}
         .toolbar {position:absolute; top:8px; right:8px; z-index:2; display:flex}
         button {display:grid; place-items:center; width:48px; height:44px; border:1px solid var(--divider-color,#ffffff30); border-radius:20px; background:transparent; color:var(--primary-text-color,#eee); cursor:pointer}
         button[aria-pressed="true"] {color:var(--primary-color,#56b8ff); background:color-mix(in srgb,var(--primary-color,#56b8ff) 18%,transparent); border-color:currentColor}
@@ -269,15 +346,15 @@ export class SamsungPointerSwitchCard extends BaseElement {
         svg {width:24px; height:24px; fill:currentColor; pointer-events:none}
         .error {color:var(--error-color,#f66); text-align:center}
       </style>
-      <ha-card><div class="toolbar"><button aria-label="Новый трекпад" title="Новый трекпад" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2v18l5-5 4 7 3-2-4-7h7z"/></svg></button></div><div class="content"></div></ha-card>`;
+      <ha-card><div class="layout ${config.side_card ? 'with-side' : ''}"><div class="pad-shell"><div class="toolbar"><button aria-label="Новый трекпад" title="Новый трекпад" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2v18l5-5 4 7 3-2-4-7h7z"/></svg></button></div><div class="content"></div></div><div class="side"></div></div></ha-card>`;
     this.shadowRoot.querySelector('button').onclick = () => this.toggle();
     void this.showCard();
   }
-  set hass(hass) { this._hass = hass; if (this.child) this.child.hass = hass; }
+  set hass(hass) { this._hass = hass; if (this.child) this.child.hass = hass; if (this.sideChild) this.sideChild.hass = hass; }
   getCardSize() { return this.child?.getCardSize?.() ?? 8; }
   connectedCallback() { if (this.config && !this.child) void this.showCard(); }
   disconnectedCallback() {
-    this.renderVersion++; this.child?.remove(); this.child = null;
+    this.renderVersion++; this.child?.remove(); this.child = null; this.sideChild?.remove(); this.sideChild = null;
   }
   toggle() {
     this.enabled = !this.enabled;
@@ -292,6 +369,11 @@ export class SamsungPointerSwitchCard extends BaseElement {
     try {
       const helpers = await window.loadCardHelpers();
       if (version !== this.renderVersion) return;
+      if (this.config.side_card && !this.sideChild) {
+        this.sideChild = helpers.createCardElement(this.config.side_card);
+        if (this._hass) this.sideChild.hass = this._hass;
+        this.shadowRoot.querySelector('.side').replaceChildren(this.sideChild);
+      }
       const child = helpers.createCardElement(this.enabled ? this.config.on_card : this.config.off_card);
       if (this._hass) child.hass = this._hass;
       this.child = child; content.replaceChildren(child);
